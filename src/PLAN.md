@@ -19,7 +19,8 @@ Key gameplay challenge: Can players collect and craft tokens from nearby locatio
 
 ### Steps
 
-- [] Create the map
-- [] Implement grid on map
+- [x] Create the map
+- [x] Implement grid on map
+- [x] Add cell tokens
 - [] Create the inventory
 - [] Create the crafting
