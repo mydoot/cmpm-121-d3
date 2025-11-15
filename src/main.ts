@@ -57,10 +57,6 @@ leaflet
 // Ensure correct sizing after layout
 map.whenReady(() => map.invalidateSize());
 
-/* const playerMarker = leaflet.marker(CLASSROOM_LATLNG);
-playerMarker.bindTooltip("That's you!");
-playerMarker.addTo(map); */
-
 class Player {
   public playerPoints: number;
   private playerMarker: leaflet.Marker;
@@ -84,25 +80,30 @@ statusPanelDiv.innerHTML = `You don't have a token.`;
 const player = new Player(map);
 
 class Token {
-  public tokenAmount: number;
+  private tokenAmount: number;
 
   constructor() {
     this.tokenAmount = 0;
   }
+
+  //addTokens() take in random x, y coord values from
+  //spawnCache() for the purposes of random number generation
   addTokens(i: number, j: number, num: number): void {
-    //addTokens() take in random x, y coord values from spawnCache() for the purposes of random number gen
     this.tokenAmount = Math.floor(
       luck([i, j, "initialValue"].toString()) * (num + 1),
     );
   }
-  removeTokens(num: number): void {
+
+  removeTokens(num: number): number {
     this.tokenAmount -= num;
+    return this.tokenAmount;
   }
+
   getTokens(): number {
     return this.tokenAmount;
   }
+
   combineTokens(): void {
-    //console.log("combining");
     if (player.playerPoints == this.tokenAmount) {
       this.tokenAmount *= 2;
       player.playerPoints = 0;
@@ -156,12 +157,12 @@ function spawnCache(x: number, y: number) {
           popupDiv.querySelector<HTMLSpanElement>("#value")!.innerHTML = token
             .getTokens().toString();
         } else {
-          popupDiv.querySelector<HTMLSpanElement>("#value")!.innerHTML = "0";
           player.playerPoints = token.getTokens();
+          popupDiv.querySelector<HTMLSpanElement>("#value")!.innerHTML = token
+            .removeTokens(token.getTokens()).toString();
           player.updateStatusDiv(
             `You have a token of value ${player.playerPoints}.`,
           );
-
           player.hasToken = true;
         }
       });
