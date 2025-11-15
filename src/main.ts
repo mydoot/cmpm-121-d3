@@ -63,12 +63,13 @@ playerMarker.addTo(map); */
 
 class Player {
   public playerPoints: number;
-  private playerMarker: leaflet.Marker<any>;
+  private playerMarker: leaflet.Marker;
   public hasToken: boolean;
 
   constructor(map: leaflet.Map) {
     this.playerPoints = 0;
     this.playerMarker = leaflet.marker(CLASSROOM_LATLNG);
+    this.playerMarker.bindTooltip("This is you.");
     this.playerMarker.addTo(map);
     this.hasToken = false;
   }
