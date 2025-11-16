@@ -104,6 +104,9 @@ class Player {
       player.hasToken = true;
     }
   }
+
+  movePlayer(): void {
+  }
 }
 
 statusPanelDiv.innerHTML = `You don't have a token.`;
