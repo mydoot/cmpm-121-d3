@@ -25,3 +25,15 @@ Key gameplay challenge: Can players collect and craft tokens from nearby locatio
 - [x] Create the inventory
 - [x] Show token amount on screen
 - [x] Create the crafting
+
+## D3.b: Globe-spanning gameplay
+
+Key technical challenge: Grid cells span the entire map/globe
+Key gameplay challenge: Creating player movement, a victory condition.
+
+### Steps
+
+- [x] Add Player movement
+- [x] Create global grid
+- [x] Create victory condition
+- []

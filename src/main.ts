@@ -29,10 +29,15 @@ const CLASSROOM_LATLNG = leaflet.latLng(
   -122.05703507501151,
 );
 
+const ORIGIN_LATLNG = leaflet.latLng(
+  0,
+  0,
+);
+
 // Tunable gameplay parameters
 const GAMEPLAY_ZOOM_LEVEL = 19;
 const TILE_DEGREES = 1e-4;
-const NEIGHBORHOOD_SIZE = 8;
+//const NEIGHBORHOOD_SIZE = 8;
 const CACHE_SPAWN_PROBABILITY = 0.1;
 
 // Create the map (element with id "map" is defined in index.html)
@@ -57,10 +62,17 @@ leaflet
 // Ensure correct sizing after layout
 map.whenReady(() => map.invalidateSize());
 
+interface Cell {
+  i: number;
+  j: number;
+}
+
 class Player {
   public playerPoints: number;
-  private playerMarker: leaflet.Marker;
+  public playerMarker: leaflet.Marker;
   public hasToken: boolean;
+  public winCondition: number;
+  //private playerLocation: number;
 
   constructor(map: leaflet.Map) {
     this.playerPoints = 0;
@@ -68,10 +80,29 @@ class Player {
     this.playerMarker.bindTooltip("This is you.");
     this.playerMarker.addTo(map);
     this.hasToken = false;
+    this.winCondition = 256;
   }
 
   updateStatusDiv(string: string): void {
     statusPanelDiv.innerHTML = string;
+  }
+
+  setPlayerLatLng(newLatLng: leaflet.LatLng) {
+    player.playerMarker.setLatLng(newLatLng);
+    map.panTo(newLatLng, { animate: true, duration: 0.15 });
+    updateVisibleCaches();
+  }
+
+  updatePlayerPoints(token: Token) {
+    player.playerPoints = token.getTokens();
+    if (player.playerPoints == player.winCondition) {
+      alert("Congratulations! You have won the game!");
+    } else {
+      player.updateStatusDiv(
+        `You have a token of value ${player.playerPoints}.`,
+      );
+      player.hasToken = true;
+    }
   }
 }
 
@@ -115,40 +146,43 @@ class Token {
   }
 }
 
-function spawnCache(x: number, y: number) {
-  const lat: number = CLASSROOM_LATLNG.lat + y * TILE_DEGREES;
-  const lng: number = CLASSROOM_LATLNG.lng + x * TILE_DEGREES;
+// NOTE: caches are created on-demand via `createCacheLayer` below.
 
-  // Draw cell boundary (non-interactive)
-  const bounds: [number, number][] = [
-    [lat - half, lng - half],
-    [lat + half, lng + half],
-  ];
-  // leaflet.rectangle expects LatLngBoundsLike; supply array-of-array form
+// Draw a simple square grid centered on the classroom and spawn caches
+const half = TILE_DEGREES / 2;
+
+// Visible/cache management: create cache layers only when they are near the player
+const spawnedLayers = new Map<string, leaflet.Layer>();
+function keyFor(x: number, y: number) {
+  return `${x},${y}`;
+}
+
+function cacheExistsAt(x: number, y: number) {
+  return luck([x, y].toString()) < CACHE_SPAWN_PROBABILITY;
+}
+
+function createCacheLayer(x: number, y: number): leaflet.Layer {
+  const lat: number = ORIGIN_LATLNG.lat + y * TILE_DEGREES;
+  const lng: number = ORIGIN_LATLNG.lng + x * TILE_DEGREES;
+
   const rect = leaflet.rectangle(
     [
-      [bounds[0][0], bounds[0][1]],
-      [bounds[1][0], bounds[1][1]],
+      [lat - half, lng - half],
+      [lat + half, lng + half],
     ],
     { color: "#0078ff", weight: 1, fill: true, interactive: true },
   );
-  rect.addTo(map);
 
-  // Spawn a cache with a probability
-  // Handle interactions with the cache
+  // Handle interactions with the cache (same behavior as before)
   rect.on("click", () => {
-    // Each cache has a random point value, mutable by the player
-
     const token = new Token();
     token.addTokens(x, y, 12);
 
-    // The popup offers a description and button
     const popupDiv = document.createElement("div");
     popupDiv.innerHTML = `
                 <div>There is a cache here at "${lat},${lng}". <br/>Contains a token of value [<span id="value">${token.getTokens()}</span>]</div>
                 <button id="poke">Take</button>`;
 
-    // Clicking the button decrements the cache's value and increments the player's points
     popupDiv
       .querySelector<HTMLButtonElement>("#poke")!
       .addEventListener("click", () => {
@@ -157,27 +191,77 @@ function spawnCache(x: number, y: number) {
           popupDiv.querySelector<HTMLSpanElement>("#value")!.innerHTML = token
             .getTokens().toString();
         } else {
-          player.playerPoints = token.getTokens();
+          player.updatePlayerPoints(token);
           popupDiv.querySelector<HTMLSpanElement>("#value")!.innerHTML = token
             .removeTokens(token.getTokens()).toString();
-          player.updateStatusDiv(
-            `You have a token of value ${player.playerPoints}.`,
-          );
-          player.hasToken = true;
         }
       });
 
     rect.bindPopup(popupDiv).openPopup();
   });
+
+  return rect;
 }
 
-// Draw a simple square grid centered on the classroom and spawn caches
-const half = TILE_DEGREES / 2;
-for (let dx = -NEIGHBORHOOD_SIZE; dx <= NEIGHBORHOOD_SIZE; dx++) {
-  for (let dy = -NEIGHBORHOOD_SIZE; dy <= NEIGHBORHOOD_SIZE; dy++) {
-    // Spawn a cache with a probability
-    if (luck([dx, dy].toString()) < CACHE_SPAWN_PROBABILITY) {
-      spawnCache(dx, dy);
+// Visibility tuning
+const VISIBLE_RADIUS_TILES = 3; // tiles in each direction to keep visible
+const PREFETCH_RADIUS = 1; // extra buffer to avoid thrash
+
+// Movement step (move one tile per keypress)
+const MOVE_STEP = TILE_DEGREES;
+
+// Keyboard movement (WASD + arrows)
+globalThis.addEventListener("keydown", (e) => {
+  const cur = player.playerMarker.getLatLng();
+  let lat = cur.lat;
+  let lng = cur.lng;
+  if (e.key === "ArrowUp" || e.key === "w") lat += MOVE_STEP;
+  if (e.key === "ArrowDown" || e.key === "s") lat -= MOVE_STEP;
+  if (e.key === "ArrowLeft" || e.key === "a") lng -= MOVE_STEP;
+  if (e.key === "ArrowRight" || e.key === "d") lng += MOVE_STEP;
+  player.setPlayerLatLng(leaflet.latLng(lat, lng));
+});
+
+function updateVisibleCaches() {
+  const center = player.playerMarker.getLatLng();
+  const centerX = Math.round(
+    (center.lng - ORIGIN_LATLNG.lng) / TILE_DEGREES,
+  );
+  const centerY = Math.round(
+    (center.lat - ORIGIN_LATLNG.lat) / TILE_DEGREES,
+  );
+  const maxR = VISIBLE_RADIUS_TILES + PREFETCH_RADIUS;
+
+  const allowed = new Set<string>();
+  for (let dx = -maxR; dx <= maxR; dx++) {
+    for (let dy = -maxR; dy <= maxR; dy++) {
+      const rx = centerX + dx;
+      const ry = centerY + dy;
+      const dist = Math.max(Math.abs(dx), Math.abs(dy));
+      if (dist <= VISIBLE_RADIUS_TILES) {
+        const key = keyFor(rx, ry);
+        allowed.add(key);
+        if (!spawnedLayers.has(key) && cacheExistsAt(rx, ry)) {
+          const layer = createCacheLayer(rx, ry);
+          spawnedLayers.set(key, layer);
+          layer.addTo(map);
+        }
+      }
+    }
+  }
+
+  // Remove layers that are no longer allowed
+  for (const key of Array.from(spawnedLayers.keys())) {
+    if (!allowed.has(key)) {
+      const layer = spawnedLayers.get(key)!;
+      map.removeLayer(layer);
+      spawnedLayers.delete(key);
     }
   }
 }
+
+// Update when camera stops moving (in case camera can be moved independent of player)
+map.on("moveend", updateVisibleCaches);
+
+// Initial population around player
+updateVisibleCaches();

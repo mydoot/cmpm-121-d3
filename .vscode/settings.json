@@ -14,7 +14,7 @@
     "source.organizeImports": "explicit"
   },
   "[typescript]": {
-    "editor.defaultFormatter": "denoland.vscode-deno",
+    "editor.defaultFormatter": "vscode.typescript-language-features",
     "editor.insertSpaces": true,
     "editor.tabSize": 2,
     "editor.detectIndentation": false
