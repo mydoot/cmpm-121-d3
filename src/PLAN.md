@@ -37,3 +37,13 @@ Key gameplay challenge: Creating player movement, a victory condition.
 - [x] Create global grid
 - [x] Create victory condition
 - []
+
+## D3.c: Globe-spanning gameplay
+
+Key technical challenge: Use a flyeweight pattern for grid cell memory management
+Key gameplay challenge: Grid cells now remember their state (so if you take a token from a grid, then move so that grid despawns, when moving back you cannot retake that token again)
+
+### Steps
+
+- [] Implement a memory saving pattern
+- [] Implement serialization for grids to retain their state after they are off-screen
