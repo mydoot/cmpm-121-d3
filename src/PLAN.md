@@ -45,5 +45,5 @@ Key gameplay challenge: Grid cells now remember their state (so if you take a to
 
 ### Steps
 
-- [] Implement a memory saving pattern
+- [x] Implement a memory saving pattern
 - [] Implement serialization for grids to retain their state after they are off-screen

@@ -62,9 +62,9 @@ leaflet
 // Ensure correct sizing after layout
 map.whenReady(() => map.invalidateSize());
 
-interface Cell {
-  i: number;
-  j: number;
+interface cacheRectangle extends leaflet.Rectangle {
+  __mementoKey: string;
+  __memento: CellMemento;
 }
 
 class Player {
@@ -122,10 +122,8 @@ class Token {
 
   //addTokens() take in random x, y coord values from
   //spawnCache() for the purposes of random number generation
-  addTokens(i: number, j: number, num: number): void {
-    this.tokenAmount = Math.floor(
-      luck([i, j, "initialValue"].toString()) * (num + 1),
-    );
+  addTokens(num: number): void {
+    this.tokenAmount = num;
   }
 
   removeTokens(num: number): number {
@@ -149,6 +147,74 @@ class Token {
   }
 }
 
+// Flyweight using Map
+type CellStyle = { color: string; weight: number; fill: boolean };
+class FlyweightFactory {
+  private styleMap = new Map<string, CellStyle>();
+  getStyle(key = "default"): CellStyle {
+    const existing = this.styleMap.get(key);
+    if (existing) return existing;
+    const style: CellStyle = { color: "#0078ff", weight: 1, fill: true };
+    this.styleMap.set(key, style);
+    return style;
+  }
+}
+
+const flyweight = new FlyweightFactory();
+
+export type CellMemento = {
+  //tokensRemaining: number;
+  visited?: boolean;
+  lastTakenAt?: number;
+  tokens: number;
+  taken: boolean;
+};
+
+export class MementoStore {
+  private map = new Map<string, CellMemento>();
+  constructor(private storageKey = "game.cell.mementos") {
+    this.loadFromStorage();
+  }
+
+  key(x: number, y: number) {
+    return `${x},${y}`;
+  }
+
+  get(x: number, y: number): CellMemento | undefined {
+    return this.map.get(this.key(x, y));
+  }
+
+  set(x: number, y: number, m: CellMemento) {
+    this.map.set(this.key(x, y), m);
+  }
+
+  delete(x: number, y: number) {
+    this.map.delete(this.key(x, y));
+  }
+
+  persistToStorage() {
+    try {
+      const arr = Array.from(this.map.entries());
+      localStorage.setItem(this.storageKey, JSON.stringify(arr));
+    } catch {
+      /* ignore */
+    }
+  }
+
+  private loadFromStorage() {
+    try {
+      const raw = localStorage.getItem(this.storageKey);
+      if (!raw) return;
+      const arr = JSON.parse(raw) as [string, CellMemento][];
+      for (const [k, v] of arr) this.map.set(k, v);
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+const mementos = new MementoStore();
+
 // NOTE: caches are created on-demand via `createCacheLayer` below.
 
 // Draw a simple square grid centered on the classroom and spawn caches
@@ -167,19 +233,43 @@ function cacheExistsAt(x: number, y: number) {
 function createCacheLayer(x: number, y: number): leaflet.Layer {
   const lat: number = ORIGIN_LATLNG.lat + y * TILE_DEGREES;
   const lng: number = ORIGIN_LATLNG.lng + x * TILE_DEGREES;
+  const style = flyweight.getStyle("default");
 
-  const rect = leaflet.rectangle(
-    [
-      [lat - half, lng - half],
-      [lat + half, lng + half],
-    ],
-    { color: "#0078ff", weight: 1, fill: true, interactive: true },
-  );
+  // restore or create minimal memento
+  const saved = mementos.get(x, y) ??
+    {
+      visited: false,
+      tokens: Math.floor(
+        luck([x, y, "initialValue"].toString()) * (13),
+      ),
+      taken: false,
+    };
+
+  const rect: leaflet.Rectangle = leaflet.rectangle([[lat - half, lng - half], [
+    lat + half,
+    lng + half,
+  ]], {
+    color: style.color,
+    weight: style.weight,
+    fill: style.fill,
+    interactive: true,
+  });
+
+  const cacheRect = rect as cacheRectangle;
+  cacheRect.__mementoKey = mementos.key(x, y);
+  cacheRect.__memento = saved;
 
   // Handle interactions with the cache (same behavior as before)
   rect.on("click", () => {
     const token = new Token();
-    token.addTokens(x, y, 12);
+    if (!saved.taken) {
+      token.addTokens(saved.tokens);
+    } else {
+      token.addTokens(0);
+    }
+    //saved.taken = true;
+    const cacheRect = rect as cacheRectangle;
+    const m = cacheRect.__memento;
 
     const popupDiv = document.createElement("div");
     popupDiv.innerHTML = `
@@ -189,15 +279,24 @@ function createCacheLayer(x: number, y: number): leaflet.Layer {
     popupDiv
       .querySelector<HTMLButtonElement>("#poke")!
       .addEventListener("click", () => {
-        if (player.hasToken) {
-          token.combineTokens();
-          popupDiv.querySelector<HTMLSpanElement>("#value")!.innerHTML = token
-            .getTokens().toString();
-        } else {
-          player.updatePlayerPoints(token);
-          popupDiv.querySelector<HTMLSpanElement>("#value")!.innerHTML = token
-            .removeTokens(token.getTokens()).toString();
+        console.log("fire");
+        //console.log(m.tokensRemaining);
+        console.log(`token in cache: ${token.getTokens()}`);
+        if (token.getTokens() > 0) {
+          //popupDiv.querySelector<HTMLSpanElement>("#value")!.innerHTML = token.getTokens().toString();
+          if (player.hasToken) {
+            token.combineTokens();
+            popupDiv.querySelector<HTMLSpanElement>("#value")!.innerHTML = token
+              .getTokens().toString();
+          } else {
+            player.updatePlayerPoints(token);
+            popupDiv.querySelector<HTMLSpanElement>("#value")!.innerHTML = token
+              .removeTokens(token.getTokens()).toString();
+          }
         }
+        saved.taken = true;
+        mementos.set(x, y, m);
+        mementos.persistToStorage();
       });
 
     rect.bindPopup(popupDiv).openPopup();
@@ -205,6 +304,18 @@ function createCacheLayer(x: number, y: number): leaflet.Layer {
 
   return rect;
 }
+
+/* // when you remove a layer:
+function removeAndSaveLayer(key: string, layer: leaflet.Layer) {
+  const mkey = (layer as any).__mementoKey as string | undefined;
+  const m = (layer as any).__memento as CellMemento | undefined;
+  if (mkey && m) {
+    mementos.set(...mkey.split(",").map(Number), m); // or parse key properly
+  }
+  layer.off && layer.off();
+  map.removeLayer(layer);
+  mementos.persistToStorage();
+} */
 
 // Visibility tuning
 const VISIBLE_RADIUS_TILES = 3; // tiles in each direction to keep visible
