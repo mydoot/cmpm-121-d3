@@ -46,4 +46,15 @@ Key gameplay challenge: Grid cells now remember their state (so if you take a to
 ### Steps
 
 - [x] Implement a memory saving pattern
-- [] Implement serialization for grids to retain their state after they are off-screen
+- [x] Implement serialization for grids to retain their state after they are off-screen
+
+## D3.d: Gameplay Across Real-world Space and Time
+
+Key technical challenge: Utilize the browser geolocation API for player movement. The gamestate should persist across page loads.
+Key gameplay challenge: Use the player's location for the player movement so that when the player moves around in real life, the location on the map in-game changes. They can also change between using their location or controlling the player manually
+
+### Steps
+
+- [] Use browser geolocation API for player movement
+- [] Implement a way to switch between location control and manual control for the player
+- [] Use localstorage API to save the gamestate between page loads
