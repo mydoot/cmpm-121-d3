@@ -69,15 +69,39 @@ leaflet
 // Ensure correct sizing after layout
 map.whenReady(() => map.invalidateSize());
 
+let watchID: number | null = null;
+
 controlSchemeDiv.addEventListener("mousedown", () => {
   if (controlScheme == "manual") {
     controlScheme = "geolocation";
     controlSchemeDiv.innerHTML = "Switch to manual";
     console.log(controlScheme);
+
+    globalThis.removeEventListener("keydown", () => { });
+
+
   } else if (controlScheme == "geolocation") {
     controlScheme = "manual";
     controlSchemeDiv.innerHTML = "Switch to geolocation";
     console.log(controlScheme);
+    if (watchID != null) {
+      navigator.geolocation.clearWatch(watchID!);
+    } else {
+      console.warn("Returned to manual with called clearWatch(): watchID didn't exist");
+    }
+
+    watchID = navigator.geolocation.watchPosition(success, error, options);
+
+    globalThis.addEventListener("keydown", (e) => {
+      const cur = player.playerMarker.getLatLng();
+      let lat = cur.lat;
+      let lng = cur.lng;
+      if (e.key === "ArrowUp" || e.key === "w") lat += MOVE_STEP;
+      if (e.key === "ArrowDown" || e.key === "s") lat -= MOVE_STEP;
+      if (e.key === "ArrowLeft" || e.key === "a") lng -= MOVE_STEP;
+      if (e.key === "ArrowRight" || e.key === "d") lng += MOVE_STEP;
+      player.setPlayerLatLng(leaflet.latLng(lat, lng));
+    });
   }
 });
 
@@ -93,7 +117,8 @@ const options = {
 if (controlScheme == "geolocation") {
   if ("geolocation" in navigator) {
     // Geolocation is supported! Proceed to get location.
-    navigator.geolocation.watchPosition(success, error, options);
+    watchID = navigator.geolocation.watchPosition(success, error, options);
+
   } else {
     // Geolocation is not available—provide a fallback message.
     alert(
@@ -295,13 +320,13 @@ function createCacheLayer(x: number, y: number): leaflet.Layer {
 
   // restore or create minimal memento
   const saved = mementos.get(x, y) ??
-    {
-      visited: false,
-      tokens: Math.floor(
-        luck([x, y, "initialValue"].toString()) * (13),
-      ),
-      taken: false,
-    };
+  {
+    visited: false,
+    tokens: Math.floor(
+      luck([x, y, "initialValue"].toString()) * (13),
+    ),
+    taken: false,
+  };
 
   const rect: leaflet.Rectangle = leaflet.rectangle([[lat - half, lng - half], [
     lat + half,
@@ -383,20 +408,17 @@ const PREFETCH_RADIUS = 1; // extra buffer to avoid thrash
 const MOVE_STEP = TILE_DEGREES;
 
 // Keyboard movement (WASD + arrows)
-if (controlScheme == "manual") {
-  globalThis.addEventListener("keydown", (e) => {
-    const cur = player.playerMarker.getLatLng();
-    let lat = cur.lat;
-    let lng = cur.lng;
-    if (e.key === "ArrowUp" || e.key === "w") lat += MOVE_STEP;
-    if (e.key === "ArrowDown" || e.key === "s") lat -= MOVE_STEP;
-    if (e.key === "ArrowLeft" || e.key === "a") lng -= MOVE_STEP;
-    if (e.key === "ArrowRight" || e.key === "d") lng += MOVE_STEP;
-    player.setPlayerLatLng(leaflet.latLng(lat, lng));
-  });
-} else if (controlScheme == "geolocation") {
-  globalThis.removeEventListener("keydown", () => {});
-}
+
+globalThis.addEventListener("keydown", (e) => {
+  const cur = player.playerMarker.getLatLng();
+  let lat = cur.lat;
+  let lng = cur.lng;
+  if (e.key === "ArrowUp" || e.key === "w") lat += MOVE_STEP;
+  if (e.key === "ArrowDown" || e.key === "s") lat -= MOVE_STEP;
+  if (e.key === "ArrowLeft" || e.key === "a") lng -= MOVE_STEP;
+  if (e.key === "ArrowRight" || e.key === "d") lng += MOVE_STEP;
+  player.setPlayerLatLng(leaflet.latLng(lat, lng));
+});
 
 function updateVisibleCaches() {
   const center = player.playerMarker.getLatLng();
