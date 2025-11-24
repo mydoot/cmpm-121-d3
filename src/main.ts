@@ -23,6 +23,13 @@ const statusPanelDiv = document.createElement("div");
 statusPanelDiv.id = "statusPanel";
 document.body.append(statusPanelDiv);
 
+const controlSchemeDiv = document.createElement("button");
+controlSchemeDiv.id = "controlScheme";
+controlSchemeDiv.innerHTML = "Switch to geolocation";
+document.body.append(controlSchemeDiv);
+
+let controlScheme: string = "manual"; //either manual or geolocation
+
 // Our classroom location
 const CLASSROOM_LATLNG = leaflet.latLng(
   36.997936938057016,
@@ -61,6 +68,57 @@ leaflet
 
 // Ensure correct sizing after layout
 map.whenReady(() => map.invalidateSize());
+
+controlSchemeDiv.addEventListener("mousedown", () => {
+  if (controlScheme == "manual") {
+    controlScheme = "geolocation";
+    controlSchemeDiv.innerHTML = "Switch to manual";
+    console.log(controlScheme);
+  } else if (controlScheme == "geolocation") {
+    controlScheme = "manual";
+    controlSchemeDiv.innerHTML = "Switch to geolocation";
+    console.log(controlScheme);
+  }
+});
+
+const options = {
+  // Try to get the best possible location (often uses GPS, increases battery drain)
+  enableHighAccuracy: true,
+  // Maximum time (in ms) to wait for a position.
+  timeout: 5000,
+  // Don't use a cached position older than this (in ms).
+  maximumAge: 0,
+};
+
+if (controlScheme == "geolocation") {
+  if ("geolocation" in navigator) {
+    // Geolocation is supported! Proceed to get location.
+    navigator.geolocation.watchPosition(success, error, options);
+  } else {
+    // Geolocation is not available—provide a fallback message.
+    alert(
+      "Geolocation is not supported by your browser. Running in manual mode",
+    );
+    controlScheme = "manual";
+  }
+}
+
+function success(position: GeolocationPosition) {
+  const latitude = position.coords.latitude;
+  const longitude = position.coords.longitude;
+  //const accuracy = position.coords.accuracy;
+
+  player.setPlayerLatLng(leaflet.latLng(latitude, longitude));
+}
+
+function error(err: GeolocationPositionError) {
+  // Handle different error codes (e.g., 1 for permission denied).
+  console.warn(`ERROR(${err.code}): ${err.message}`);
+  console.log(`Running in manual mode`);
+  controlScheme = "manual";
+  // **Game Logic:**
+  // Provide a friendly message and a graceful fallback, or end the game.
+}
 
 interface cacheRectangle extends leaflet.Rectangle {
   __mementoKey: string;
@@ -325,16 +383,20 @@ const PREFETCH_RADIUS = 1; // extra buffer to avoid thrash
 const MOVE_STEP = TILE_DEGREES;
 
 // Keyboard movement (WASD + arrows)
-globalThis.addEventListener("keydown", (e) => {
-  const cur = player.playerMarker.getLatLng();
-  let lat = cur.lat;
-  let lng = cur.lng;
-  if (e.key === "ArrowUp" || e.key === "w") lat += MOVE_STEP;
-  if (e.key === "ArrowDown" || e.key === "s") lat -= MOVE_STEP;
-  if (e.key === "ArrowLeft" || e.key === "a") lng -= MOVE_STEP;
-  if (e.key === "ArrowRight" || e.key === "d") lng += MOVE_STEP;
-  player.setPlayerLatLng(leaflet.latLng(lat, lng));
-});
+if (controlScheme == "manual") {
+  globalThis.addEventListener("keydown", (e) => {
+    const cur = player.playerMarker.getLatLng();
+    let lat = cur.lat;
+    let lng = cur.lng;
+    if (e.key === "ArrowUp" || e.key === "w") lat += MOVE_STEP;
+    if (e.key === "ArrowDown" || e.key === "s") lat -= MOVE_STEP;
+    if (e.key === "ArrowLeft" || e.key === "a") lng -= MOVE_STEP;
+    if (e.key === "ArrowRight" || e.key === "d") lng += MOVE_STEP;
+    player.setPlayerLatLng(leaflet.latLng(lat, lng));
+  });
+} else if (controlScheme == "geolocation") {
+  globalThis.removeEventListener("keydown", () => {});
+}
 
 function updateVisibleCaches() {
   const center = player.playerMarker.getLatLng();
