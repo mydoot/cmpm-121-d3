@@ -55,6 +55,10 @@ Key gameplay challenge: Use the player's location for the player movement so tha
 
 ### Steps
 
-- [] Use browser geolocation API for player movement
-- [] Implement a way to switch between location control and manual control for the player
-- [] Use localstorage API to save the gamestate between page loads
+- [x] Add geolocation toggle button to controlPanel
+- [x] Implement continuous position tracking with watchPosition()
+- [x] Handle geolocation permission denied → fallback to WASD
+- [x] Handle geolocation errors gracefully
+- [x] Test switching between manual and geolocation modes
+- [x] Use localstorage API to save the gamestate (both player state and control scheme state) between page loads
+- [x] Create some sort of starting prompt

@@ -10,3 +10,12 @@
   width: 100%;
   height: 80vh;
 }
+
+#startScreen {
+  display: flex;
+  vertical-align: top;
+}
+
+.invisMap {
+  visibility: hidden;
+}

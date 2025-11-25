@@ -28,7 +28,14 @@ controlSchemeDiv.id = "controlScheme";
 controlSchemeDiv.innerHTML = "Switch to geolocation";
 document.body.append(controlSchemeDiv);
 
+const startScreenDiv = document.createElement("button");
+startScreenDiv.id = "startScreen";
+startScreenDiv.innerHTML = "Begin the Game";
+document.body.append(startScreenDiv);
+
 let controlScheme: string = "manual"; //either manual or geolocation
+
+let gameStart: boolean = false;
 
 // Our classroom location
 const CLASSROOM_LATLNG = leaflet.latLng(
@@ -71,37 +78,63 @@ map.whenReady(() => map.invalidateSize());
 
 let watchID: number | null = null;
 
+// To HIDE the map:
+mapDiv.classList.add("invisMap");
+
+startScreenDiv.addEventListener("mousedown", () => {
+  // To SHOW the map:
+  mapDiv.classList.remove("invisMap");
+  gameStart = true;
+  startScreenDiv.style.display = "none";
+
+  globalThis.addEventListener("keydown", Keyboard);
+
+  statusPanelDiv.innerHTML = `You don't have a token.`;
+
+  if (player.hasToken) {
+    statusPanelDiv.innerHTML =
+      `You have a token of value ${player.playerPoints}.`;
+  } else {
+    statusPanelDiv.innerHTML = `You don't have a token.`;
+  }
+});
+
 controlSchemeDiv.addEventListener("mousedown", () => {
-  if (controlScheme == "manual") {
-    controlScheme = "geolocation";
-    controlSchemeDiv.innerHTML = "Switch to manual";
-    console.log(controlScheme);
+  if (gameStart) {
+    if (controlScheme == "manual") {
+      controlScheme = "geolocation";
+      controlSchemeDiv.innerHTML = "Switch to manual";
+      console.log(controlScheme);
 
-    globalThis.removeEventListener("keydown", () => { });
+      if ("geolocation" in navigator) {
+        // Geolocation is supported! Proceed to get location.
+        watchID = navigator.geolocation.watchPosition(success, error, options);
+      } else {
+        // Geolocation is not available—provide a fallback message.
+        alert(
+          "Geolocation is not supported by your browser. Running in manual mode",
+        );
+        controlScheme = "manual";
+      }
 
+      globalThis.removeEventListener("keydown", Keyboard);
+    } else if (controlScheme == "geolocation") {
+      controlScheme = "manual";
+      controlSchemeDiv.innerHTML = "Switch to geolocation";
+      console.log(controlScheme);
 
-  } else if (controlScheme == "geolocation") {
-    controlScheme = "manual";
-    controlSchemeDiv.innerHTML = "Switch to geolocation";
-    console.log(controlScheme);
-    if (watchID != null) {
-      navigator.geolocation.clearWatch(watchID!);
-    } else {
-      console.warn("Returned to manual with called clearWatch(): watchID didn't exist");
+      if (watchID != null) {
+        navigator.geolocation.clearWatch(watchID!);
+      } else {
+        console.warn(
+          "Returned to manual with called clearWatch(): watchID didn't exist",
+        );
+      }
+
+      globalThis.addEventListener("keydown", Keyboard);
     }
-
-    watchID = navigator.geolocation.watchPosition(success, error, options);
-
-    globalThis.addEventListener("keydown", (e) => {
-      const cur = player.playerMarker.getLatLng();
-      let lat = cur.lat;
-      let lng = cur.lng;
-      if (e.key === "ArrowUp" || e.key === "w") lat += MOVE_STEP;
-      if (e.key === "ArrowDown" || e.key === "s") lat -= MOVE_STEP;
-      if (e.key === "ArrowLeft" || e.key === "a") lng -= MOVE_STEP;
-      if (e.key === "ArrowRight" || e.key === "d") lng += MOVE_STEP;
-      player.setPlayerLatLng(leaflet.latLng(lat, lng));
-    });
+  } else {
+    alert("Please begin the game first.");
   }
 });
 
@@ -114,11 +147,10 @@ const options = {
   maximumAge: 0,
 };
 
-if (controlScheme == "geolocation") {
+/* if (controlScheme == "geolocation") {
   if ("geolocation" in navigator) {
     // Geolocation is supported! Proceed to get location.
     watchID = navigator.geolocation.watchPosition(success, error, options);
-
   } else {
     // Geolocation is not available—provide a fallback message.
     alert(
@@ -126,7 +158,7 @@ if (controlScheme == "geolocation") {
     );
     controlScheme = "manual";
   }
-}
+} */
 
 function success(position: GeolocationPosition) {
   const latitude = position.coords.latitude;
@@ -150,11 +182,23 @@ interface cacheRectangle extends leaflet.Rectangle {
   __memento: CellMemento;
 }
 
+interface PlayerSaveData {
+  playerPoints: number;
+  playerLat: number;
+  playerLng: number;
+  hasToken: boolean;
+  lastSaved: number;
+  controlScheme: string;
+}
+
+const SAVE_KEY = "playerData";
+
 class Player {
   public playerPoints: number;
   public playerMarker: leaflet.Marker;
   public hasToken: boolean;
   public winCondition: number;
+  private lastSaved: number;
   //private playerLocation: number;
 
   constructor(map: leaflet.Map) {
@@ -164,6 +208,7 @@ class Player {
     this.playerMarker.addTo(map);
     this.hasToken = false;
     this.winCondition = 256;
+    this.lastSaved = Date.now();
   }
 
   updateStatusDiv(string: string): void {
@@ -188,13 +233,67 @@ class Player {
     }
   }
 
-  movePlayer(): void {
+  prepareSeralization() {
+    const latLng = this.playerMarker.getLatLng();
+
+    return {
+      playerPoints: this.playerPoints,
+      hasToken: this.hasToken,
+      lastSaved: this.lastSaved,
+      playerLat: latLng.lat,
+      playerLng: latLng.lng,
+      controlScheme: controlScheme,
+    };
+  }
+
+  saveState() {
+    const serializableData: PlayerSaveData = this.prepareSeralization();
+
+    // This is the string you save to localStorage
+    const jsonString = JSON.stringify(serializableData);
+
+    localStorage.setItem(SAVE_KEY, jsonString);
   }
 }
 
-statusPanelDiv.innerHTML = `You don't have a token.`;
+statusPanelDiv.innerHTML = `Please press 'Begin the Game' to start the game.`;
 
-const player = new Player(map);
+function loadPlayer(map: L.Map): Player {
+  const jsonString = localStorage.getItem("playerData");
+  if (!jsonString) {
+    const newPlayer = new Player(map);
+    console.log("loading new game state");
+    return newPlayer;
+  }
+
+  try {
+    const savedState: PlayerSaveData = JSON.parse(jsonString);
+
+    console.log("loading saved game state");
+    controlScheme = savedState.controlScheme;
+
+    // Use the saved coordinates to re-create the Leaflet marker
+    const newPlayer = new Player(map); // Instantiate the class
+
+    // Update the state based on loaded data
+    newPlayer.playerPoints = savedState.playerPoints;
+    newPlayer.hasToken = savedState.hasToken;
+
+    // Move the marker to the saved position
+    newPlayer.playerMarker.setLatLng([
+      savedState.playerLat,
+      savedState.playerLng,
+    ]);
+
+    return newPlayer;
+  } catch (e) {
+    console.error("Failed to parse saved player data, creating new save", e);
+    const newPlayer = new Player(map);
+    return newPlayer;
+  }
+}
+
+const player = loadPlayer(map);
 
 class Token {
   private tokenAmount: number;
@@ -320,13 +419,13 @@ function createCacheLayer(x: number, y: number): leaflet.Layer {
 
   // restore or create minimal memento
   const saved = mementos.get(x, y) ??
-  {
-    visited: false,
-    tokens: Math.floor(
-      luck([x, y, "initialValue"].toString()) * (13),
-    ),
-    taken: false,
-  };
+    {
+      visited: false,
+      tokens: Math.floor(
+        luck([x, y, "initialValue"].toString()) * (13),
+      ),
+      taken: false,
+    };
 
   const rect: leaflet.Rectangle = leaflet.rectangle([[lat - half, lng - half], [
     lat + half,
@@ -409,7 +508,7 @@ const MOVE_STEP = TILE_DEGREES;
 
 // Keyboard movement (WASD + arrows)
 
-globalThis.addEventListener("keydown", (e) => {
+const Keyboard = (e: KeyboardEvent) => {
   const cur = player.playerMarker.getLatLng();
   let lat = cur.lat;
   let lng = cur.lng;
@@ -418,7 +517,11 @@ globalThis.addEventListener("keydown", (e) => {
   if (e.key === "ArrowLeft" || e.key === "a") lng -= MOVE_STEP;
   if (e.key === "ArrowRight" || e.key === "d") lng += MOVE_STEP;
   player.setPlayerLatLng(leaflet.latLng(lat, lng));
-});
+};
+
+/* if (controlScheme == 'manual') {
+  globalThis.addEventListener("keydown", Keyboard);
+} */
 
 function updateVisibleCaches() {
   const center = player.playerMarker.getLatLng();
@@ -463,3 +566,9 @@ map.on("moveend", updateVisibleCaches);
 
 // Initial population around player
 updateVisibleCaches();
+
+globalThis.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    player.saveState();
+  }
+});
